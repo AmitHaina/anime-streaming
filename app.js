@@ -155,6 +155,25 @@ function showView(viewName) {
   const viewId = `${viewName}-view`;
   state.currentView = viewId;
   
+  // Stop playback and clean up stream when navigating away from the watch page
+  if (viewName !== "watch") {
+    if (state.plyrPlayer) {
+      try {
+        state.plyrPlayer.stop();
+      } catch (err) {
+        console.error("Error stopping player:", err);
+      }
+    }
+    if (state.hlsInstance) {
+      try {
+        state.hlsInstance.destroy();
+        state.hlsInstance = null;
+      } catch (err) {
+        console.error("Error destroying HLS instance:", err);
+      }
+    }
+  }
+
   Object.keys(elements.views).forEach(key => {
     if (key === viewName) {
       elements.views[key].classList.add("active");
