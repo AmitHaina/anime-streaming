@@ -3,7 +3,7 @@ import cors from "cors";
 import { META, ANIME } from "@consumet/extensions";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 6969;
 
 // Enable CORS for frontend local development
 app.use(cors());
