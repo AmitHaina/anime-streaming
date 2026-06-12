@@ -1,12 +1,14 @@
 // Core App State
 const state = {
   currentView: "home-view",
-  currentProvider: "saturn", // Default backing provider
+  currentProvider: "hianime", // Default backing provider
   activeAnime: null,
   activeEpisodesList: [],
   currentPlayingEpisode: null,
   plyrPlayer: null,
-  hlsInstance: null
+  hlsInstance: null,
+  toastTimeout: null,
+  hlsRecoveryAttempts: 0
 };
 
 // DOM Elements
@@ -100,7 +102,7 @@ function setupEventListeners() {
   // Provider Selector Change
   elements.providerSelect.addEventListener("change", (e) => {
     state.currentProvider = e.target.value;
-    showToast(`Switched provider to ${e.target.value === "saturn" ? "AnimeSaturn" : "AnimeUnity"}`);
+    showToast(`Switched provider to ${e.target.value === "hianime" ? "Hianime" : "AnimePahe"}`);
     
     // Reload active view state
     if (state.currentView === "home-view") {
@@ -186,12 +188,18 @@ function showView(viewName) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// Show Alert Toast Message
+// Show Alert Toast Message (Fix: Toast Race Condition)
 function showToast(message, duration = 3000) {
+  if (state.toastTimeout) {
+    clearTimeout(state.toastTimeout);
+  }
+  
   elements.toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${message}`;
   elements.toast.classList.remove("hidden");
-  setTimeout(() => {
+  
+  state.toastTimeout = setTimeout(() => {
     elements.toast.classList.add("hidden");
+    state.toastTimeout = null;
   }, duration);
 }
 
@@ -233,6 +241,17 @@ async function loadHomePage() {
   } catch (error) {
     console.error("Home loading error:", error);
     elements.trendingGrid.innerHTML = `<p class="no-results"><i class="fa-solid fa-triangle-exclamation"></i> Error loading trending feed: ${error.message}</p>`;
+    
+    // Fix: Frozen Hero Banner on Loading Failure
+    elements.heroBanner.style.backgroundImage = "url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920')";
+    elements.heroTitle.textContent = "Aether Premium Anime";
+    elements.heroDescription.textContent = "Discover and watch premium, high-definition anime streams. Try searching for a title in the search bar above or choose a different provider.";
+    elements.heroRating.innerHTML = `<i class="fa-solid fa-star"></i> 10.0`;
+    elements.heroType.innerHTML = `<i class="fa-solid fa-tv"></i> TV/Movies`;
+    elements.heroStatus.innerHTML = `<i class="fa-solid fa-clock"></i> Completed/Ongoing`;
+    
+    elements.heroPlayBtn.onclick = () => showToast("Search for an anime below to begin!");
+    elements.heroInfoBtn.onclick = () => showToast("Search for an anime below to begin!");
   }
 }
 
@@ -434,6 +453,11 @@ async function loadWatchView(episode) {
     if (!response.ok) throw new Error("Failed to load stream sources");
     const data = await response.json();
     
+    // Fix: Unhandled Exception on Empty Video Sources
+    if (!data || !data.sources || data.sources.length === 0) {
+      throw new Error("No playable video sources returned from scraper.");
+    }
+
     // Gogoanime / AnimeSaturn typically return HLS playlist .m3u8 sources
     const m3u8Source = data.sources.find(s => s.isM3U8 || s.url.includes(".m3u8"));
     const fallbackSource = data.sources[0];
@@ -466,11 +490,23 @@ function playStream(url) {
     state.hlsInstance.attachMedia(video);
     
     state.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+      state.hlsRecoveryAttempts = 0; // Reset consecutive recovery attempts on successful load
       if (state.plyrPlayer) state.plyrPlayer.play().catch(e => console.log("Auto-play blocked"));
     });
     
     state.hlsInstance.on(Hls.Events.ERROR, (event, data) => {
       if (data.fatal) {
+        // Fix: Infinite HLS Recovery Loop Prevention
+        state.hlsRecoveryAttempts = (state.hlsRecoveryAttempts || 0) + 1;
+        if (state.hlsRecoveryAttempts > 3) {
+          console.error("HLS fatal errors exceeded max recovery attempts. Stopping.");
+          showToast("Playback failed due to multiple HLS connection errors. Try switching providers.");
+          elements.watchEpTitle.textContent = "Playback failed: Server link is unreachable or expired.";
+          state.hlsInstance.destroy();
+          state.hlsInstance = null;
+          return;
+        }
+
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
             console.log("Fatal network error in HLS client. Retrying...");

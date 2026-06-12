@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import { META, ANIME } from "@consumet/extensions";
@@ -8,8 +9,8 @@ const PORT = process.env.PORT || 6969;
 // Enable CORS for frontend local development
 app.use(cors());
 
-// Serve static frontend files from current directory
-app.use(express.static("."));
+// Serve static frontend files from public directory
+app.use(express.static("public"));
 
 // Helper function to resolve the Anilist instance with the desired backing provider
 const getAnilistInstance = (providerName) => {
@@ -101,7 +102,7 @@ app.get("/api/sources", async (req, res) => {
 
 // Fallback index.html route for SPA client routing
 app.get("*", (req, res) => {
-  res.sendFile("index.html", { root: "." });
+  res.sendFile("index.html", { root: "public" });
 });
 
 app.listen(PORT, () => {
