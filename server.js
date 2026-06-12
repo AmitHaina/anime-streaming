@@ -12,6 +12,10 @@ app.use(cors());
 // Serve static frontend files from public directory
 app.use(express.static("public"));
 
+// Simple In-Memory Cache for details requests to make navigation blazing fast
+const infoCache = new Map();
+const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
 // Helper function to resolve the Anilist instance with the desired backing provider
 const getAnilistInstance = (providerName) => {
   const name = String(providerName || "saturn").toLowerCase();
@@ -64,15 +68,34 @@ app.get("/api/trending", async (req, res) => {
 app.get("/api/info/:id", async (req, res) => {
   const id = req.params.id;
   const provider = req.query.provider;
+  const cacheKey = `${provider || "saturn"}:${id}`;
 
   if (!id) {
     return res.status(400).json({ error: "Anime ID is required" });
   }
 
+  // Check cache first
+  if (infoCache.has(cacheKey)) {
+    const cached = infoCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log(`[Cache Hit] Serving Info for ${cacheKey}`);
+      return res.json(cached.data);
+    }
+    // Expired cache item
+    infoCache.delete(cacheKey);
+  }
+
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Fetching info for ID: ${id} using provider: ${provider || "saturn"}...`);
+    console.log(`[API Cache Miss] Fetching info for ID: ${id} using provider: ${provider || "saturn"}...`);
     const info = await anilist.fetchAnimeInfo(id);
+
+    // Save to cache
+    infoCache.set(cacheKey, {
+      timestamp: Date.now(),
+      data: info
+    });
+
     res.json(info);
   } catch (error) {
     console.error(`[API Error] Fetching info for ${id} failed:`, error);
