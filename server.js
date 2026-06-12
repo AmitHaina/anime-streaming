@@ -91,30 +91,36 @@ app.get("/api/info/:id", async (req, res) => {
     const info = await anilist.fetchAnimeInfo(id);
 
     // If provider is AnimeUnity and there are multiple pages of episodes, fetch and merge them
-    if (String(provider || "unity").toLowerCase() === "unity" && info.episodes && info.episodes.length > 0 && info.totalPages > 1) {
-      try {
-        const firstEp = info.episodes[0];
-        const mappedId = firstEp.id.split("/")[0];
-        console.log(`[API Pagination] AnimeUnity has ${info.totalPages} pages. Fetching pages 2 to ${info.totalPages} for mapped ID "${mappedId}"...`);
-        
-        // Fetch all remaining pages in parallel
-        const pagePromises = [];
-        for (let p = 2; p <= info.totalPages; p++) {
-          pagePromises.push(anilist.provider.fetchAnimeInfo(mappedId, p));
-        }
-        
-        const pagesResults = await Promise.all(pagePromises);
-        pagesResults.forEach((pageInfo) => {
-          if (pageInfo && pageInfo.episodes) {
-            info.episodes = info.episodes.concat(pageInfo.episodes);
+    if (String(provider || "unity").toLowerCase() === "unity" && info.episodes && info.episodes.length > 0) {
+      const totalEpisodesCount = info.totalEpisodes || info.episodes.length;
+      const totalPages = Math.ceil(totalEpisodesCount / 120);
+      
+      if (totalPages > 1) {
+        try {
+          const firstEp = info.episodes[0];
+          const mappedId = firstEp.id.split("/")[0];
+          console.log(`[API Pagination] AnimeUnity calculated total pages: ${totalPages}. Fetching pages 2 to ${totalPages} for mapped ID "${mappedId}"...`);
+          
+          // Fetch all remaining pages in parallel
+          const pagePromises = [];
+          for (let p = 2; p <= totalPages; p++) {
+            pagePromises.push(anilist.provider.fetchAnimeInfo(mappedId, p));
           }
-        });
-        
-        // Sort episodes numerically to ensure correct ordering
-        info.episodes.sort((a, b) => a.number - b.number);
-        console.log(`[API Pagination] Successfully merged all pages. Total episodes: ${info.episodes.length}`);
-      } catch (paginateError) {
-        console.error("[API Pagination Error] Failed to fetch additional pages:", paginateError.message);
+          
+          const pagesResults = await Promise.all(pagePromises);
+          pagesResults.forEach((pageInfo) => {
+            if (pageInfo && pageInfo.episodes) {
+              info.episodes = info.episodes.concat(pageInfo.episodes);
+            }
+          });
+          
+          // Deduplicate and sort episodes numerically to ensure correct ordering
+          info.episodes = Array.from(new Set(info.episodes.map(e => JSON.stringify(e)))).map(s => JSON.parse(s));
+          info.episodes.sort((a, b) => a.number - b.number);
+          console.log(`[API Pagination] Successfully merged all pages. Total episodes: ${info.episodes.length}`);
+        } catch (paginateError) {
+          console.error("[API Pagination Error] Failed to fetch additional pages:", paginateError.message);
+        }
       }
     }
 
