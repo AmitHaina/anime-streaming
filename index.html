@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AETHER - Premium Anime Streaming</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Plyr Video Player CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css">
+  <!-- Core Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  
+  <!-- Navigation Header -->
+  <header class="navbar">
+    <div class="navbar-container">
+      <a href="/" class="logo" id="nav-logo">
+        <span class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+        AETHER
+      </a>
+      
+      <div class="search-bar">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="search-input" placeholder="Search anime, movies, series..." autocomplete="off">
+        <button id="search-clear-btn" class="search-clear-btn hidden"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="nav-controls">
+        <!-- Provider Selector -->
+        <div class="provider-selector-wrapper">
+          <label for="provider-select"><i class="fa-solid fa-server"></i> Provider:</label>
+          <select id="provider-select" class="provider-select">
+            <option value="saturn" selected>AnimeSaturn (Complete list, IT Sub)</option>
+            <option value="unity">AnimeUnity (120 eps limit, IT Sub)</option>
+          </select>
+        </div>
+        
+        <button class="nav-btn" id="home-nav-btn"><i class="fa-solid fa-house"></i> Home</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Views Container -->
+  <main class="main-content">
+    
+    <!-- HOME VIEW -->
+    <section id="home-view" class="view-section active">
+      <!-- Hero Banner -->
+      <div class="hero-banner" id="hero-banner">
+        <div class="hero-gradient"></div>
+        <div class="hero-content">
+          <span class="hero-badge"><i class="fa-solid fa-fire"></i> Trending #1</span>
+          <h1 class="hero-title" id="hero-title">Loading Featured Anime...</h1>
+          <p class="hero-description" id="hero-description">Please wait while we load the latest updates.</p>
+          <div class="hero-meta">
+            <span id="hero-rating"><i class="fa-solid fa-star"></i> --</span>
+            <span id="hero-type"><i class="fa-solid fa-tv"></i> --</span>
+            <span id="hero-status"><i class="fa-solid fa-clock"></i> --</span>
+          </div>
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="hero-play-btn"><i class="fa-solid fa-play"></i> Watch Now</button>
+            <button class="btn btn-secondary" id="hero-info-btn"><i class="fa-solid fa-circle-info"></i> More Info</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trending Section -->
+      <div class="section-container">
+        <h2 class="section-title"><i class="fa-solid fa-circle-nodes"></i> Trending Now</h2>
+        <div class="anime-grid" id="trending-grid">
+          <!-- Skeleton cards will go here -->
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEARCH VIEW -->
+    <section id="search-view" class="view-section">
+      <div class="section-container">
+        <h2 class="section-title" id="search-query-title">Search Results</h2>
+        <div class="anime-grid" id="search-grid"></div>
+      </div>
+    </section>
+
+    <!-- DETAILS VIEW -->
+    <section id="details-view" class="view-section">
+      <div class="details-banner" id="details-bg-banner">
+        <div class="details-banner-overlay"></div>
+      </div>
+      
+      <div class="details-container">
+        <div class="details-main-info">
+          <div class="details-poster-wrapper">
+            <img id="details-poster" src="" alt="Poster">
+          </div>
+          
+          <div class="details-metadata">
+            <h1 class="details-title" id="details-title">Loading Details...</h1>
+            <h3 class="details-jp-title" id="details-jp-title"></h3>
+            
+            <div class="details-badges" id="details-genres"></div>
+            
+            <div class="details-stats">
+              <span id="details-rating"><i class="fa-solid fa-star"></i> --</span>
+              <span id="details-status"><i class="fa-solid fa-circle-check"></i> --</span>
+              <span id="details-ep-count"><i class="fa-solid fa-video"></i> -- Episodes</span>
+              <span id="details-release"><i class="fa-solid fa-calendar"></i> --</span>
+            </div>
+
+            <p class="details-description" id="details-description"></p>
+          </div>
+        </div>
+
+        <div class="details-episodes-section">
+          <div class="episodes-header">
+            <h2><i class="fa-solid fa-list-ol"></i> Episodes</h2>
+            <div class="episodes-search-wrapper">
+              <input type="text" id="episodes-search" placeholder="Search episode number...">
+            </div>
+          </div>
+          <div class="episodes-grid" id="episodes-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WATCH VIEW -->
+    <section id="watch-view" class="view-section">
+      <div class="watch-container">
+        <div class="watch-player-area">
+          <div class="watch-header">
+            <button class="back-btn" id="watch-back-btn"><i class="fa-solid fa-arrow-left"></i> Back to Details</button>
+            <h1 class="watch-anime-title" id="watch-title">Streaming Episode</h1>
+          </div>
+          
+          <!-- Video Player Container -->
+          <div class="player-wrapper">
+            <video id="player" playsinline controls></video>
+          </div>
+
+          <div class="episode-details">
+            <h2 id="watch-ep-number">Episode --</h2>
+            <p id="watch-ep-title">Loading stream details...</p>
+          </div>
+        </div>
+
+        <!-- Sidebar Episode Selector -->
+        <div class="watch-sidebar">
+          <div class="sidebar-header">
+            <h3>Episodes List</h3>
+          </div>
+          <div class="sidebar-episodes-list" id="sidebar-episodes-grid">
+            <!-- Sidebar episodes populated via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Custom Notification Banner (Toast) -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Hls.js and Plyr Polyfill -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.js"></script>
+  <!-- App JS -->
+  <script src="app.js"></script>
+</body>
+</html>
