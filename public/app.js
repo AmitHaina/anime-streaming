@@ -1,7 +1,7 @@
 // Core App State
 const state = {
   currentView: "home-view",
-  currentProvider: "hianime", // Default backing provider
+  currentProvider: "saturn", // Default backing provider
   activeAnime: null,
   activeEpisodesList: [],
   currentPlayingEpisode: null,
@@ -102,7 +102,7 @@ function setupEventListeners() {
   // Provider Selector Change
   elements.providerSelect.addEventListener("change", (e) => {
     state.currentProvider = e.target.value;
-    showToast(`Switched provider to ${e.target.value === "hianime" ? "Hianime" : "AnimePahe"}`);
+    showToast(`Switched provider to ${e.target.value === "saturn" ? "AnimeSaturn" : "AnimeUnity"}`);
     
     // Reload active view state
     if (state.currentView === "home-view") {
