@@ -18,12 +18,12 @@ const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
 // Helper function to resolve the Anilist instance with the desired backing provider
 const getAnilistInstance = (providerName) => {
-  const name = String(providerName || "saturn").toLowerCase();
-  if (name === "unity") {
-    return new META.Anilist(new ANIME.AnimeUnity());
+  const name = String(providerName || "unity").toLowerCase();
+  if (name === "saturn") {
+    return new META.Anilist(new ANIME.AnimeSaturn());
   }
-  // Default to AnimeSaturn because it contains the complete episode lists
-  return new META.Anilist(new ANIME.AnimeSaturn());
+  // Default to AnimeUnity
+  return new META.Anilist(new ANIME.AnimeUnity());
 };
 
 // Search endpoint
@@ -38,7 +38,7 @@ app.get("/api/search", async (req, res) => {
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Searching for "${query}" using provider: ${provider || "saturn"} (page ${page})...`);
+    console.log(`[API] Searching for "${query}" using provider: ${provider || "unity"} (page ${page})...`);
     const results = await anilist.search(query, page);
     res.json(results);
   } catch (error) {
@@ -54,7 +54,7 @@ app.get("/api/trending", async (req, res) => {
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Fetching trending anime using provider: ${provider || "saturn"} (page ${page})...`);
+    console.log(`[API] Fetching trending anime using provider: ${provider || "unity"} (page ${page})...`);
     // fetchRecentEpisodes or advancedSearch with POPULARITY_DESC
     const results = await anilist.advancedSearch(undefined, "ANIME", page, 15, undefined, ["POPULARITY_DESC"]);
     res.json(results);
@@ -68,7 +68,7 @@ app.get("/api/trending", async (req, res) => {
 app.get("/api/info/:id", async (req, res) => {
   const id = req.params.id;
   const provider = req.query.provider;
-  const cacheKey = `${provider || "saturn"}:${id}`;
+  const cacheKey = `${provider || "unity"}:${id}`;
 
   if (!id) {
     return res.status(400).json({ error: "Anime ID is required" });
@@ -87,8 +87,36 @@ app.get("/api/info/:id", async (req, res) => {
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API Cache Miss] Fetching info for ID: ${id} using provider: ${provider || "saturn"}...`);
+    console.log(`[API Cache Miss] Fetching info for ID: ${id} using provider: ${provider || "unity"}...`);
     const info = await anilist.fetchAnimeInfo(id);
+
+    // If provider is AnimeUnity and there are multiple pages of episodes, fetch and merge them
+    if (String(provider || "unity").toLowerCase() === "unity" && info.episodes && info.episodes.length > 0 && info.totalPages > 1) {
+      try {
+        const firstEp = info.episodes[0];
+        const mappedId = firstEp.id.split("/")[0];
+        console.log(`[API Pagination] AnimeUnity has ${info.totalPages} pages. Fetching pages 2 to ${info.totalPages} for mapped ID "${mappedId}"...`);
+        
+        // Fetch all remaining pages in parallel
+        const pagePromises = [];
+        for (let p = 2; p <= info.totalPages; p++) {
+          pagePromises.push(anilist.provider.fetchAnimeInfo(mappedId, p));
+        }
+        
+        const pagesResults = await Promise.all(pagePromises);
+        pagesResults.forEach((pageInfo) => {
+          if (pageInfo && pageInfo.episodes) {
+            info.episodes = info.episodes.concat(pageInfo.episodes);
+          }
+        });
+        
+        // Sort episodes numerically to ensure correct ordering
+        info.episodes.sort((a, b) => a.number - b.number);
+        console.log(`[API Pagination] Successfully merged all pages. Total episodes: ${info.episodes.length}`);
+      } catch (paginateError) {
+        console.error("[API Pagination Error] Failed to fetch additional pages:", paginateError.message);
+      }
+    }
 
     // Save to cache
     infoCache.set(cacheKey, {
@@ -114,7 +142,7 @@ app.get("/api/sources", async (req, res) => {
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Fetching sources for Episode ID: ${episodeId} using provider: ${provider || "saturn"}...`);
+    console.log(`[API] Fetching sources for Episode ID: ${episodeId} using provider: ${provider || "unity"}...`);
     const sources = await anilist.fetchEpisodeSources(episodeId);
     res.json(sources);
   } catch (error) {
