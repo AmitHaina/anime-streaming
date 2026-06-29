@@ -6,9 +6,10 @@ Aether is a high-performance, premium single-page web application (SPA) for stre
 
 ## 🚀 Key Features
 
-*   **⚡ Sub-30ms Details Loading:** Integrates an in-memory server cache with a 2-hour TTL, serving previously loaded details instantly.
+*   **⚡ Sub-30ms Details Loading:** Integrates a capped in-memory LRU cache (500 entries, 2-hour TTL), serving previously loaded details instantly without unbounded memory growth.
 *   **🔄 Parallel Episode Merging:** Programmatically resolves the standard 120-episode pagination limit on backing providers by fetching and merging all pages in parallel.
 *   **🎭 Dual-Provider Seamless Switching:** Switch on the fly between **AnimeUnity** and **AnimeSaturn** directly from the navigation bar.
+*   **🛡️ Hardened API Layer:** Ships with `helmet` security headers, per-IP rate limiting, request validation, centralized error handling, and a 15s provider timeout with automatic retry.
 *   **📱 Premium Responsive UI:** Features Outfit & Inter typography, dark-mode styling, hover micro-animations, loading skeleton screens, and clean Crunchyroll-style episode tab pagination.
 *   **📺 Native Player Integration:** Leverages **Plyr** and **Hls.js** to stream raw HTTP Live Streaming (HLS) `.m3u8` manifests with full player control.
 
@@ -36,6 +37,8 @@ flowchart TD
 |---|---|---|
 | **Backend** | Node.js / Express | API router and static file hosting server |
 | **Scraping Core** | `@consumet/extensions` | Backing engine for fetching anime metadata and stream sources |
+| **Hardening** | helmet, express-rate-limit, morgan, dotenv | Security headers, rate limiting, request logging, env config |
+| **Caching** | lru-cache | Capped in-memory details cache with TTL |
 | **Frontend** | HTML5 / JavaScript (ES6) | Responsive Single Page Application (SPA) client |
 | **Styling** | CSS3 (Custom Grid/Variables) | Modern dark-mode layout and animations |
 | **Player** | Plyr & Hls.js | HTML5 video player and HLS playlist handler |
@@ -86,8 +89,12 @@ GET /api/sources?episodeId=<episode_id>&provider=<unity|saturn>
 
 ## 🔧 Troubleshooting
 
-*   **Port Conflicts:** By default, the server runs on port `6969`. You can change this by setting the `PORT` environment variable:
+*   **Port Conflicts:** By default, the server runs on port `6969`. You can change this by setting the `PORT` environment variable (a `.env` file is also supported via `dotenv`):
     ```bash
+    # PowerShell
     $env:PORT=8080; npm start
+    # bash
+    PORT=8080 npm start
     ```
-*   **Network Timeouts:** If the backing providers experience high latency, the cache miss response times may increase. Once cached, subsequent requests will load instantly.
+*   **Network Timeouts:** Provider calls have a 15-second timeout and are retried once automatically. If the backing providers experience high latency, the cache miss response times may increase. Once cached, subsequent requests will load instantly.
+*   **HTTP 429 (Too Many Requests):** The API is rate limited to 60 requests per minute per IP. Wait a moment before retrying, or adjust the limit in `server.js`.

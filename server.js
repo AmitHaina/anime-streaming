@@ -1,20 +1,57 @@
 
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import rateLimit from "express-rate-limit";
+import { LRUCache } from "lru-cache";
 import { META, ANIME } from "@consumet/extensions";
 
 const app = express();
 const PORT = process.env.PORT || 6969;
 
+// Security headers (CSP disabled so external CDNs/players keep working as before)
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Request logging
+app.use(morgan("dev"));
+
 // Enable CORS for frontend local development
 app.use(cors());
+
+// Rate limit the API to protect the upstream scraper from abuse
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please slow down." }
+});
+app.use("/api", apiLimiter);
 
 // Serve static frontend files from public directory
 app.use(express.static("public"));
 
-// Simple In-Memory Cache for details requests to make navigation blazing fast
-const infoCache = new Map();
+// In-memory LRU cache for details requests (capped to avoid unbounded growth)
 const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+const infoCache = new LRUCache({ max: 500, ttl: CACHE_DURATION });
+
+// Wrap a provider promise with a timeout and a single retry on failure
+const PROVIDER_TIMEOUT = 15000; // 15 seconds
+const withTimeout = (promiseFactory, label) => {
+  const attempt = () =>
+    Promise.race([
+      promiseFactory(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${PROVIDER_TIMEOUT}ms`)), PROVIDER_TIMEOUT)
+      )
+    ]);
+  return attempt().catch((err) => {
+    console.warn(`[Provider Retry] ${label} failed (${err.message}). Retrying once...`);
+    return attempt();
+  });
+};
 
 // Helper function to resolve the Anilist instance with the desired backing provider
 const getAnilistInstance = (providerName) => {
@@ -27,10 +64,11 @@ const getAnilistInstance = (providerName) => {
 };
 
 // Search endpoint
-app.get("/api/search", async (req, res) => {
-  const query = req.query.q;
+app.get("/api/search", async (req, res, next) => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const provider = req.query.provider;
-  const page = parseInt(req.query.page || "1");
+  const page = Number.parseInt(req.query.page, 10);
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
 
   if (!query) {
     return res.status(400).json({ error: "Query parameter 'q' is required" });
@@ -38,34 +76,36 @@ app.get("/api/search", async (req, res) => {
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Searching for "${query}" using provider: ${provider || "unity"} (page ${page})...`);
-    const results = await anilist.search(query, page);
+    console.log(`[API] Searching for "${query}" using provider: ${provider || "unity"} (page ${safePage})...`);
+    const results = await withTimeout(() => anilist.search(query, safePage), "search");
     res.json(results);
   } catch (error) {
-    console.error("[API Error] Search failed:", error);
-    res.status(500).json({ error: "Failed to search anime", details: error.message });
+    next(error);
   }
 });
 
 // Trending / Popular endpoint
-app.get("/api/trending", async (req, res) => {
+app.get("/api/trending", async (req, res, next) => {
   const provider = req.query.provider;
-  const page = parseInt(req.query.page || "1");
+  const page = Number.parseInt(req.query.page, 10);
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
 
   try {
     const anilist = getAnilistInstance(provider);
-    console.log(`[API] Fetching trending anime using provider: ${provider || "unity"} (page ${page})...`);
+    console.log(`[API] Fetching trending anime using provider: ${provider || "unity"} (page ${safePage})...`);
     // fetchRecentEpisodes or advancedSearch with POPULARITY_DESC
-    const results = await anilist.advancedSearch(undefined, "ANIME", page, 15, undefined, ["POPULARITY_DESC"]);
+    const results = await withTimeout(
+      () => anilist.advancedSearch(undefined, "ANIME", safePage, 15, undefined, ["POPULARITY_DESC"]),
+      "trending"
+    );
     res.json(results);
   } catch (error) {
-    console.error("[API Error] Fetching trending failed:", error);
-    res.status(500).json({ error: "Failed to fetch trending anime", details: error.message });
+    next(error);
   }
 });
 
 // Anime Info endpoint
-app.get("/api/info/:id", async (req, res) => {
+app.get("/api/info/:id", async (req, res, next) => {
   const id = req.params.id;
   const provider = req.query.provider;
   const cacheKey = `${provider || "unity"}:${id}`;
@@ -75,20 +115,16 @@ app.get("/api/info/:id", async (req, res) => {
   }
 
   // Check cache first
-  if (infoCache.has(cacheKey)) {
-    const cached = infoCache.get(cacheKey);
-    if (Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`[Cache Hit] Serving Info for ${cacheKey}`);
-      return res.json(cached.data);
-    }
-    // Expired cache item
-    infoCache.delete(cacheKey);
+  const cached = infoCache.get(cacheKey);
+  if (cached) {
+    console.log(`[Cache Hit] Serving Info for ${cacheKey}`);
+    return res.json(cached);
   }
 
   try {
     const anilist = getAnilistInstance(provider);
     console.log(`[API Cache Miss] Fetching info for ID: ${id} using provider: ${provider || "unity"}...`);
-    const info = await anilist.fetchAnimeInfo(id);
+    const info = await withTimeout(() => anilist.fetchAnimeInfo(id), "fetchAnimeInfo");
 
     // If provider is AnimeUnity and there are multiple pages of episodes, fetch and merge them
     if (String(provider || "unity").toLowerCase() === "unity" && info.episodes && info.episodes.length > 0) {
@@ -125,21 +161,17 @@ app.get("/api/info/:id", async (req, res) => {
     }
 
     // Save to cache
-    infoCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data: info
-    });
+    infoCache.set(cacheKey, info);
 
     res.json(info);
   } catch (error) {
-    console.error(`[API Error] Fetching info for ${id} failed:`, error);
-    res.status(500).json({ error: "Failed to fetch anime details", details: error.message });
+    next(error);
   }
 });
 
 // Streaming Sources endpoint
-app.get("/api/sources", async (req, res) => {
-  const episodeId = req.query.episodeId;
+app.get("/api/sources", async (req, res, next) => {
+  const episodeId = typeof req.query.episodeId === "string" ? req.query.episodeId.trim() : "";
   const provider = req.query.provider;
 
   if (!episodeId) {
@@ -149,17 +181,27 @@ app.get("/api/sources", async (req, res) => {
   try {
     const anilist = getAnilistInstance(provider);
     console.log(`[API] Fetching sources for Episode ID: ${episodeId} using provider: ${provider || "unity"}...`);
-    const sources = await anilist.fetchEpisodeSources(episodeId);
+    const sources = await withTimeout(() => anilist.fetchEpisodeSources(episodeId), "fetchEpisodeSources");
     res.json(sources);
   } catch (error) {
-    console.error(`[API Error] Fetching sources for ${episodeId} failed:`, error);
-    res.status(500).json({ error: "Failed to fetch streaming sources", details: error.message });
+    next(error);
   }
+});
+
+// Unknown API routes should return JSON 404, not the SPA shell
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "API route not found" });
 });
 
 // Fallback index.html route for SPA client routing
 app.get("*", (req, res) => {
   res.sendFile("index.html", { root: "public" });
+});
+
+// Centralized error handler
+app.use((err, req, res, next) => {
+  console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err.message);
+  res.status(500).json({ error: "Request failed", details: err.message });
 });
 
 app.listen(PORT, () => {
